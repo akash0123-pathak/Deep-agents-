@@ -1,0 +1,25 @@
+# ──────────────────────────────────────────────
+#  Deep Agents Explorer — requirements.txt
+#  Backend: NVIDIA NIM (OpenAI-compatible API)
+#  Agent framework: deepagents + LangGraph
+#  UI: Streamlit
+#
+#  Install: pip install -r requirements.txt
+# ──────────────────────────────────────────────
+
+# UI
+streamlit>=1.35.0
+
+# NVIDIA NIM / OpenAI-compatible client
+openai>=1.30.0
+
+# LangChain stack
+langchain>=0.2.0
+langchain-core>=0.2.0
+langchain-openai>=0.1.8
+
+# Deep Agents (LangChain's multi-agent harness built on LangGraph)
+deepagents>=0.1.0
+
+# LangGraph (installed as deepagents dependency, pinned for stability)
+langgraph>=0.1.0
