@@ -1,30 +1,3 @@
-"""
-╔══════════════════════════════════════════════════════════════════════════╗
-║  DEEP AGENTS EXPLORER  —  Complete Edition                              ║
-║  Uses the REAL  deepagents  library (pip install deepagents)            ║
-║  langchain-ai/deepagents  ·  MIT  ·  built on LangGraph                ║
-╚══════════════════════════════════════════════════════════════════════════╝
-
-Core API used:
-    from deepagents import create_deep_agent
-    agent = create_deep_agent(
-        model   = ChatOpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key="nvapi-…", model="meta/llama-3.3-70b-instruct"),
-        tools   = [...],                  # your custom tools
-        system_prompt = "...",           # main-agent system prompt
-        subagents    = [                 # ← MULTIPLE sub-agents
-            {"name": "analyst",  "description": "...", "system_prompt": "..."},
-            {"name": "critic",   "description": "...", "system_prompt": "..."},
-            {"name": "writer",   "description": "...", "system_prompt": "..."},
-        ],
-    )
-    # Returns a LangGraph CompiledStateGraph
-    for chunk in agent.stream({"messages": [HumanMessage(content=task)]}):
-        ...
-
-Built-in tools auto-injected by deepagents (no setup needed):
-    write_todos  read_file  write_file  edit_file
-    ls  glob  grep  task  compact_conversation
-"""
 
 import os, re, json, traceback, html as _html
 from datetime import datetime
@@ -1090,16 +1063,19 @@ with st.sidebar:
 st.markdown("""
 <div class="hero">
   <p class="hero-title">⬡ Deep Agents Explorer</p>
-  <p class="hero-sub">
-    The real <code>deepagents</code> library by LangChain · <code>create_deep_agent(subagents=[...])</code> ·
-    Built-in write_todos / filesystem / task tool · Powered by NVIDIA NIM (no TPM limits!)
+  <p class="hero-sub" style="color:#4a6080;font-size:.82rem;margin:0 0 .9rem;">
+    <strong style="color:#64748b;">Quick start:</strong>
+    &nbsp;1. Enter your NVIDIA NIM key in the sidebar &nbsp;·&nbsp;
+    2. Pick a pipeline below &nbsp;·&nbsp;
+    3. Edit the task input &nbsp;·&nbsp;
+    4. Hit <strong style="color:#38bdf8;">Run</strong>
   </p>
   <div>
-    <span class="hbadge hb1">create_deep_agent</span>
-    <span class="hbadge hb2">subagents=[ ]</span>
-    <span class="hbadge hb3">write_todos</span>
-    <span class="hbadge hb4">task tool</span>
-    <span class="hbadge hb5">virtual filesystem</span>
+    <span class="hbadge hb1">pip install deepagents</span>
+    <span class="hbadge hb2">create_deep_agent(subagents=[…])</span>
+    <span class="hbadge hb3">write_todos built-in</span>
+    <span class="hbadge hb4">task tool built-in</span>
+    <span class="hbadge hb5">NVIDIA NIM free tier</span>
     <span class="hbadge hb6">LangGraph streaming</span>
   </div>
 </div>
@@ -1121,26 +1097,52 @@ with tab_pipelines:
     st.markdown("### Pre-built Multi-Agent Pipelines")
     st.caption("Each pipeline uses `create_deep_agent(subagents=[...])` with 2-3 specialist sub-agents.")
 
-    # Card grid
+    # Card grid — each card IS the button (full-area click, no separate Select btn)
     cols = st.columns(3)
     for idx, (pk, pv) in enumerate(PIPELINES.items()):
         with cols[idx % 3]:
-            active_cls = "active" if st.session_state.active_pipeline == pk else ""
-            sa_str = " · ".join(
-                f'<span style="color:#818cf8">{sa["name"]}</span>'
-                for sa in pv["subagents"]
+            is_active = st.session_state.active_pipeline == pk
+            active_border = "#818cf8" if is_active else "#111d33"
+            active_bg     = "#0f1c36" if is_active else "#0b1524"
+            active_label  = "✓ Selected" if is_active else "Select"
+            sa_str = "  ·  ".join(sa["name"] for sa in pv["subagents"])
+            # Wrap in a container div so CSS can target this specific button
+            st.markdown(f'<div id="card_wrap_{pk}">', unsafe_allow_html=True)
+            st.markdown(f"""<style>
+#card_wrap_{pk} + div[data-testid="stButton"] button,
+#card_wrap_{pk} ~ div[data-testid="stButton"] button {{
+    background: {active_bg} !important;
+    border: 1px solid {active_border} !important;
+    border-radius: 14px !important;
+    padding: 1.1rem 1.3rem !important;
+    text-align: left !important;
+    height: auto !important;
+    white-space: pre-wrap !important;
+    width: 100% !important;
+    color: #dde3f0 !important;
+    font-family: 'Sora', sans-serif !important;
+    font-size: .8rem !important;
+    line-height: 1.6 !important;
+    cursor: pointer !important;
+    transition: border-color .18s, background .18s !important;
+}}
+#card_wrap_{pk} + div[data-testid="stButton"] button:hover {{
+    border-color: #1e4976 !important;
+    background: #0c1a2e !important;
+}}
+</style>""", unsafe_allow_html=True)
+            btn_label = (
+                f"{pv['icon']} **{pv['title']}**\n\n"
+                f"{pv['desc']}\n\n"
+                f"*sub-agents: {sa_str}*\n\n"
+                f"{'✓ Selected' if is_active else '▶ Select'}"
             )
-            st.markdown(f"""
-<div class="pc {active_cls}">
-  <p class="pc-title">{pv['icon']} {pv['title']}</p>
-  <p class="pc-desc">{pv['desc']}</p>
-  <p class="pc-flow">sub-agents: {sa_str}</p>
-</div>""", unsafe_allow_html=True)
-            if st.button("Select", key=f"sel_{pk}", use_container_width=True):
+            if st.button(btn_label, key=f"sel_{pk}", use_container_width=True):
                 st.session_state.active_pipeline = pk
                 st.session_state.logs = []
                 st.session_state.last_output = ""
                 st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
 
     # ── Run panel ──
     if st.session_state.active_pipeline:
