@@ -520,30 +520,33 @@ PIPELINES = {
         "use_case": "Research any topic, compare technologies, explain concepts",
         "example": "Compare LangGraph vs traditional LangChain AgentExecutor: key differences in architecture, memory, and streaming.",
         "system_prompt": (
-            "You are the Lead Research Agent. Follow these steps in order:\n"
-            "1. Call write_todos with todo objects like: "
-            "write_todos(todos=[{\"content\":\"Plan research\",\"status\":\"in_progress\"},{\"content\":\"Gather data\",\"status\":\"pending\"},{\"content\":\"Analyse\",\"status\":\"pending\"},{\"content\":\"Write report\",\"status\":\"pending\"}])\n"
-            "2. Call task(description=\"<your specific research question>\", subagent_type=\"data-analyst\")\n"
-            "3. Call write_file(filename=\"notes.md\", content=\"<paste findings here>\")\n"
-            "4. Call task(description=\"<paste notes here>\", subagent_type=\"writer-agent\")\n"
-            "5. Output the writer-agent's response as your final answer.\n"
-            "Never pass JSON arrays as quoted strings."
+            "You are the Lead Research Agent. Execute ALL steps in order. Do not skip any step.\n"
+            "STEP 1 — Call write_todos with exactly this structure (todos must be a list, not a string):\n"
+            "  write_todos(todos=[{\"content\":\"Gather data\",\"status\":\"in_progress\"},{\"content\":\"Critique findings\",\"status\":\"pending\"},{\"content\":\"Write report\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task to gather research. Copy the EXACT user question into description:\n"
+            "  task(description=\"Research this and return detailed bullet-point findings: <COPY USER QUESTION HERE>\", subagent_type=\"data-analyst\")\n"
+            "STEP 3 — The task call returns findings. Call task again, passing those findings verbatim as description:\n"
+            "  task(description=\"Critique these findings and list 3-5 tradeoffs/limitations: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"critic-agent\")\n"
+            "STEP 4 — Call task with BOTH step 2 and step 3 outputs combined in description:\n"
+            "  task(description=\"Write a structured report from: FINDINGS: <STEP 2 OUTPUT> CRITIQUE: <STEP 3 OUTPUT>\", subagent_type=\"writer-agent\")\n"
+            "STEP 5 — Output the writer-agent result as your final answer. Do not summarize — output it in full.\n"
+            "CRITICAL: Never pass a filename as description. Always paste the actual text content."
         ),
         "subagents": [
             {
                 "name": "data-analyst",
-                "description": "Gathers facts, benchmarks, and data points",
-                "system_prompt": "You are a fact-gatherer. Use knowledge_lookup to get concrete facts and numbers. Output bullet points.",
+                "description": "Gathers facts, benchmarks, and data points about a topic",
+                "system_prompt": "You are a fact-gatherer. Use knowledge_lookup to get concrete facts and numbers. Output 8-12 detailed bullet points. Be specific with numbers and examples.",
             },
             {
                 "name": "critic-agent",
-                "description": "Finds weaknesses and counterarguments in findings",
-                "system_prompt": "You are a critic. Find 3-5 key limitations or tradeoffs in what was presented. Be concise.",
+                "description": "Finds weaknesses, tradeoffs, and counterarguments in findings",
+                "system_prompt": "You are a critical analyst. Given findings, identify 3-5 key limitations, tradeoffs, or counterarguments. Format as a numbered list. Be concise and specific.",
             },
             {
                 "name": "writer-agent",
-                "description": "Writes the final polished report from all findings",
-                "system_prompt": "You are a technical writer. Write a concise structured report: Summary, Findings, Tradeoffs, Recommendation. Use markdown.",
+                "description": "Writes the final polished report from all findings and critique",
+                "system_prompt": "You are a technical writer. Given findings and critique, write a structured markdown report with sections: ## Summary, ## Key Findings, ## Tradeoffs & Limitations, ## Recommendation. Be comprehensive.",
             },
         ],
         "flow": "main → write_todos → task(data-analyst) → task(critic-agent) → task(writer-agent)",
@@ -563,94 +566,103 @@ PIPELINES = {
             "    return user is not None"
         ),
         "system_prompt": (
-            "You are the Lead Security Auditor.\n"
-            "1. Call write_todos(todos=[{\"content\":\"Check for injection\",\"status\":\"in_progress\"},{\"content\":\"Check auth\",\"status\":\"pending\"},{\"content\":\"Check crypto\",\"status\":\"pending\"},{\"content\":\"Write report\",\"status\":\"pending\"}]).\n"
-            "2. Call task(description=\"<paste the code here>\", subagent_type=\"static-analyzer\").\n"
-            "3. write_file('findings.md', <results>).\n"
-            "4. Call task(description=\"<paste all security findings here>\", subagent_type=\"fix-writer\").\n"
-            "5. Output final audit report."
+            "You are the Lead Security Auditor. Execute ALL steps in order.\n"
+            "STEP 1 — Call write_todos:\n"
+            "  write_todos(todos=[{\"content\":\"Analyse vulnerabilities\",\"status\":\"in_progress\"},{\"content\":\"Write fixes\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task, pasting the EXACT code from the user into description:\n"
+            "  task(description=\"Analyse this code for security vulnerabilities, bugs, and anti-patterns. List every issue with severity and location: <PASTE CODE HERE>\", subagent_type=\"static-analyzer\")\n"
+            "STEP 3 — Call task, passing the FULL findings from step 2 as description:\n"
+            "  task(description=\"For each finding below, write a secure fixed version with explanation: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"fix-writer\")\n"
+            "STEP 4 — Output the fix-writer result as your final answer.\n"
+            "CRITICAL: Always paste actual text content into description, never a filename."
         ),
         "subagents": [
             {
                 "name": "static-analyzer",
                 "description": "Finds security vulnerabilities, bugs, and anti-patterns in code",
-                "system_prompt": "You are a security analyzer. Use analyze_code tool. List each issue: Severity | Location | Description. Be brief.",
+                "system_prompt": "You are a security analyzer. Use analyze_code tool on the provided code. Then list EVERY issue found: Severity | Type | Line/Location | Description. Be thorough.",
             },
             {
                 "name": "fix-writer",
-                "description": "Writes secure replacement code with explanations",
-                "system_prompt": "You are a security engineer. For each finding write: the fixed code snippet and a one-line explanation. Use markdown code blocks.",
+                "description": "Writes secure replacement code with explanations for each finding",
+                "system_prompt": "You are a security engineer. For each finding provided, write: (1) the fixed code in a markdown code block, (2) a one-line explanation of what changed and why.",
             },
         ],
-        "flow": "main → write_todos → task(static-analyzer) → write_file → task(fix-writer) → report",
+        "flow": "main → write_todos → task(static-analyzer) → task(fix-writer) → report",
     },
 
     "data_intelligence": {
         "icon":  "📊",
         "title": "Data Intelligence Pipeline",
-        "desc":  "Stats agent crunches numbers, insights agent interprets them, report-writer delivers the final report.",
+        "desc":  "Stats agent crunches numbers, report-writer delivers insights and recommendations.",
         "use_case": "Business analytics, KPI analysis, trend detection",
         "example": "Analyse SaaS metrics: Revenue($): Jan=8200,Feb=9100,Mar=11500,Apr=10200,May=14800,Jun=19400. Churn(%): 8.2,7.9,7.1,8.8,6.4,5.2",
         "system_prompt": (
-            "You are the Lead Data Analyst.\n"
-            "1. Call write_todos(todos=[{\"content\":\"Compute statistics\",\"status\":\"in_progress\"},{\"content\":\"Find insights\",\"status\":\"pending\"},{\"content\":\"Write report\",\"status\":\"pending\"}]).\n"
-            "2. Call task(description=\"<paste the raw data here>\", subagent_type=\"stats-agent\").\n"
-            "3. write_file('stats.md', <results>).\n"
-            "4. Call task(description=\"<paste the stats results here>\", subagent_type=\"report-writer\").\n"
-            "Output the final report."
+            "You are the Lead Data Analyst. Execute ALL steps in order.\n"
+            "STEP 1 — Call write_todos:\n"
+            "  write_todos(todos=[{\"content\":\"Compute statistics\",\"status\":\"in_progress\"},{\"content\":\"Write report\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task, pasting the EXACT data from the user into description:\n"
+            "  task(description=\"Compute full descriptive statistics, trends, and anomalies for this data: <PASTE RAW DATA HERE>\", subagent_type=\"stats-agent\")\n"
+            "STEP 3 — Call task, passing the FULL stats output from step 2 as description:\n"
+            "  task(description=\"Write an executive data report from these statistics: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"report-writer\")\n"
+            "STEP 4 — Output the report-writer result as your final answer.\n"
+            "CRITICAL: Always paste actual text content into description, never a filename."
         ),
         "subagents": [
             {
                 "name": "stats-agent",
                 "description": "Computes statistics, trends, and anomalies from numerical data",
-                "system_prompt": "You are a quant analyst. Use compute_stats on the data. Report: mean, trend slope, anomalies, % change. Use a table.",
+                "system_prompt": "You are a quant analyst. Use compute_stats on the provided data. Report all of: N, mean, median, min, max, std dev, linear slope, trend direction, % change, and any anomalies. Use a markdown table.",
             },
             {
                 "name": "insights-agent",
                 "description": "Translates statistics into business insights and recommendations",
-                "system_prompt": "You are a BI analyst. Given stats, explain what they mean for the business. Give 3 concrete recommendations.",
+                "system_prompt": "You are a BI analyst. Given stats, explain what they mean for the business in plain language. Give 3 concrete actionable recommendations.",
             },
             {
                 "name": "report-writer",
                 "description": "Writes the final executive data intelligence report",
-                "system_prompt": "You are a data storyteller. Write a report: Executive Summary, Key Metrics table, Top 3 Insights, Recommendations. Use markdown.",
+                "system_prompt": "You are a data storyteller. Write a markdown report with: ## Executive Summary, ## Key Metrics (table), ## Top Insights, ## Recommendations. Be specific and data-driven.",
             },
         ],
-        "flow": "main → write_todos → task(stats-agent) → write_file → task(report-writer)",
+        "flow": "main → write_todos → task(stats-agent) → task(report-writer)",
     },
 
     "project_architect": {
         "icon":  "🗺️",
         "title": "Project Architecture Planner",
-        "desc":  "Tech-researcher picks the stack, effort-estimator builds the backlog, risk-analyst flags blockers.",
+        "desc":  "Tech-researcher picks the stack, effort-estimator builds the backlog.",
         "use_case": "System design, sprint planning, architecture decisions",
         "example": "Design architecture for a real-time chat app: WebSocket messaging, user auth, message history, and a React frontend.",
         "system_prompt": (
-            "You are the Lead Architect.\n"
-            "1. Call write_todos(todos=[{\"content\":\"Research stack\",\"status\":\"in_progress\"},{\"content\":\"Estimate effort\",\"status\":\"pending\"},{\"content\":\"Assess risks\",\"status\":\"pending\"},{\"content\":\"Write plan\",\"status\":\"pending\"}]).\n"
-            "2. Call task(description=\"<paste the requirements here>\", subagent_type=\"tech-researcher\").\n"
-            "3. Call task(description=\"<paste the component list here>\", subagent_type=\"effort-estimator\").\n"
-            "4. generate_report(title='Architecture Plan', sections=<json>).\n"
-            "Output the final architecture plan."
+            "You are the Lead Architect. Execute ALL steps in order.\n"
+            "STEP 1 — Call write_todos:\n"
+            "  write_todos(todos=[{\"content\":\"Research stack\",\"status\":\"in_progress\"},{\"content\":\"Estimate effort\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task, pasting the EXACT requirements from the user into description:\n"
+            "  task(description=\"Recommend the best technology for each component of this system, with rationale and risks: <PASTE REQUIREMENTS HERE>\", subagent_type=\"tech-researcher\")\n"
+            "STEP 3 — Call task, passing the FULL tech recommendations from step 2 as description:\n"
+            "  task(description=\"Estimate story points and sprint effort for each component listed: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"effort-estimator\")\n"
+            "STEP 4 — Output a final Architecture Plan combining both outputs.\n"
+            "CRITICAL: Always paste actual text content into description, never a filename."
         ),
         "subagents": [
             {
                 "name": "tech-researcher",
-                "description": "Recommends best-fit technologies for each component",
-                "system_prompt": "You are a senior architect. Use knowledge_lookup to recommend technologies. For each component: Chosen Tech | Reason | Risk. Be brief.",
+                "description": "Recommends best-fit technologies for each component of a system",
+                "system_prompt": "You are a senior architect. Use knowledge_lookup for each major component. For each: Chosen Tech | Reason | Risk level. Format as a markdown table. Be specific.",
             },
             {
                 "name": "effort-estimator",
                 "description": "Estimates story points and sprint timeline for each component",
-                "system_prompt": "You are an engineering manager. Use estimate_effort per component. Output a backlog table: Task | Points | Priority.",
+                "system_prompt": "You are an engineering manager. Use estimate_effort per component. Output a backlog table: Component | Task | Story Points | Sprint | Priority. Include a total estimate.",
             },
             {
                 "name": "risk-analyst",
                 "description": "Identifies technical risks and mitigation strategies",
-                "system_prompt": "You are a risk analyst. List the top 5 risks: Risk | Probability | Impact | Mitigation. Use a markdown table.",
+                "system_prompt": "You are a risk analyst. List the top 5 technical risks: Risk | Probability (H/M/L) | Impact (H/M/L) | Mitigation strategy. Use a markdown table.",
             },
         ],
-        "flow": "main → write_todos → task(tech-researcher) → task(effort-estimator) → generate_report",
+        "flow": "main → write_todos → task(tech-researcher) → task(effort-estimator) → plan",
     },
 
     "debug_pipeline": {
@@ -665,63 +677,69 @@ PIPELINES = {
             "days_in_month() uses a dict — December key was removed in last refactor."
         ),
         "system_prompt": (
-            "You are the Lead Debug Agent.\n"
-            "1. Call write_todos(todos=[{\"content\":\"Classify error\",\"status\":\"in_progress\"},{\"content\":\"Find root cause\",\"status\":\"pending\"},{\"content\":\"Write fix\",\"status\":\"pending\"},{\"content\":\"Write tests\",\"status\":\"pending\"}]).\n"
-            "2. Use classify_error on the traceback.\n"
-            "3. Call task(description=\"<paste error and context here>\", subagent_type=\"root-cause-analyst\").\n"
-            "4. write_file('root_cause.md', <analysis>).\n"
-            "5. Call task(description=\"<paste root cause analysis here>\", subagent_type=\"fix-writer\").\n"
-            "Output: Root Cause + Fix + Tests."
+            "You are the Lead Debug Agent. Execute ALL steps in order.\n"
+            "STEP 1 — Call write_todos:\n"
+            "  write_todos(todos=[{\"content\":\"Find root cause\",\"status\":\"in_progress\"},{\"content\":\"Write fix and tests\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task, pasting the EXACT error and code from the user into description:\n"
+            "  task(description=\"Find the root cause of this error. Identify trigger conditions and affected code path: <PASTE ERROR + CODE HERE>\", subagent_type=\"root-cause-analyst\")\n"
+            "STEP 3 — Call task, passing the FULL root cause analysis from step 2 as description:\n"
+            "  task(description=\"Write the minimal fix and 3 pytest tests for this root cause analysis: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"fix-writer\")\n"
+            "STEP 4 — Output the complete fix and tests as your final answer.\n"
+            "CRITICAL: Always paste actual text content into description, never a filename."
         ),
         "subagents": [
             {
                 "name": "root-cause-analyst",
                 "description": "Finds the exact root cause and trigger conditions of the error",
-                "system_prompt": "You are a debug specialist. Use classify_error. Identify: root cause (1 sentence), trigger conditions, affected code path. Be precise.",
+                "system_prompt": "You are a debug specialist. Use classify_error on any traceback provided. Output: (1) Root Cause in one sentence, (2) Trigger conditions, (3) Affected code path, (4) Why it fails. Be precise.",
             },
             {
                 "name": "fix-writer",
                 "description": "Writes the minimal correct fix and unit tests",
-                "system_prompt": "You are a senior engineer. Write: (1) minimal fix with comments, (2) 3 pytest tests: happy path, edge case, regression. Use code blocks.",
+                "system_prompt": "You are a senior engineer. Write: (1) the minimal fix as a code block with inline comments, (2) 3 pytest tests covering happy path, edge case, and regression. Use markdown code blocks.",
             },
         ],
-        "flow": "main → write_todos → classify_error → task(root-cause-analyst) → task(fix-writer)",
+        "flow": "main → write_todos → task(root-cause-analyst) → task(fix-writer)",
     },
 
     "doc_generator": {
         "icon":  "📚",
         "title": "Technical Doc Generator",
-        "desc":  "Context-gatherer researches the topic, doc-writer drafts the docs, quality-reviewer polishes the final output.",
+        "desc":  "Context-gatherer researches the topic, doc-writer drafts complete documentation.",
         "use_case": "README, API docs, onboarding guides, runbooks",
         "example": "Write a README for 'FlowGraph' — a Python library for building LangGraph agent pipelines with a declarative DSL, built-in retry, and streaming support.",
         "system_prompt": (
-            "You are the Lead Documentation Agent.\n"
-            "1. Call write_todos(todos=[{\"content\":\"Gather context\",\"status\":\"in_progress\"},{\"content\":\"Draft docs\",\"status\":\"pending\"},{\"content\":\"Review docs\",\"status\":\"pending\"}]).\n"
-            "2. Call task(description=\"<paste the project description here>\", subagent_type=\"context-gatherer\").\n"
-            "3. write_file('context.md', <findings>).\n"
-            "4. Call task(description=\"<paste gathered context here>\", subagent_type=\"doc-writer\").\n"
-            "5. Output the final documentation."
+            "You are the Lead Documentation Agent. Execute ALL steps in order.\n"
+            "STEP 1 — Call write_todos:\n"
+            "  write_todos(todos=[{\"content\":\"Gather context\",\"status\":\"in_progress\"},{\"content\":\"Write documentation\",\"status\":\"pending\"}])\n"
+            "STEP 2 — Call task, pasting the EXACT project description from the user into description:\n"
+            "  task(description=\"Research this project and return: feature list, 2 code examples, 3 FAQ answers, similar tools comparison: <PASTE PROJECT DESCRIPTION HERE>\", subagent_type=\"context-gatherer\")\n"
+            "STEP 3 — Call task, passing the FULL context from step 2 as description:\n"
+            "  task(description=\"Write complete technical documentation using this context: <PASTE STEP 2 OUTPUT HERE>\", subagent_type=\"doc-writer\")\n"
+            "STEP 4 — Output the documentation as your final answer.\n"
+            "CRITICAL: Always paste actual text content into description, never a filename."
         ),
         "subagents": [
             {
                 "name": "context-gatherer",
-                "description": "Researches similar projects and prepares context and examples",
-                "system_prompt": "You are a researcher. Use knowledge_lookup for similar libraries. Produce: feature list, 2 code examples, 3 FAQ answers.",
+                "description": "Researches the project and prepares context, examples, and comparisons",
+                "system_prompt": "You are a researcher. Use knowledge_lookup for similar tools/libraries. Produce: (1) 6-8 feature bullet points, (2) 2 realistic code examples, (3) 3 FAQ answers, (4) comparison with 2 alternatives.",
             },
             {
                 "name": "doc-writer",
                 "description": "Writes complete technical documentation with code examples",
-                "system_prompt": "You are a technical writer. Write docs with sections: Intro, Install, Quick Start, API Reference, Examples. Use markdown and code blocks.",
+                "system_prompt": "You are a technical writer. Write full markdown docs with these sections: ## Overview, ## Installation, ## Quick Start (with code), ## API Reference, ## Examples, ## FAQ. Use code blocks for all code.",
             },
             {
                 "name": "quality-reviewer",
-                "description": "Reviews docs for completeness and clarity, outputs final improved version",
-                "system_prompt": "You are a DX reviewer. Fix any gaps, unclear wording, or missing examples in the draft. Output the complete improved final version.",
+                "description": "Reviews docs for completeness and clarity, outputs improved final version",
+                "system_prompt": "You are a DX reviewer. Fix gaps, unclear wording, or missing examples in the docs provided. Output the complete improved final version — do not summarize, output everything.",
             },
         ],
-        "flow": "main → write_todos → task(context-gatherer) → task(doc-writer) → task(quality-reviewer)",
+        "flow": "main → write_todos → task(context-gatherer) → task(doc-writer)",
     },
 }
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -747,14 +765,14 @@ def build_agent(api_key: str, model_str: str, instructions: str, subagents_cfg: 
         api_key=api_key,
         model=model_str,
         temperature=0.4,
-        max_tokens=800,
+        max_tokens=1200,
     )
     sub_model = ChatOpenAI(
         base_url=NVIDIA_BASE_URL,
         api_key=api_key,
         model=model_str,
         temperature=0.3,
-        max_tokens=600,
+        max_tokens=1200,  # was 600 — truncation caused extra round-trips
     )
 
     domain_tools = make_domain_tools(api_key, model_str)
@@ -830,6 +848,9 @@ def run_agent_stream(agent, task_text: str, pipeline_cfg: dict):
     res_ph = st.empty()
 
     sa_names = [sa["name"] for sa in pipeline_cfg.get("subagents", [])]
+    # Track which subagent is currently running for the heartbeat
+    _active_subagent: list[str] = []   # mutable list so inner func can write to it
+    _heartbeat_counter: list[int] = [0]
 
     def _render():
         css_map = {
@@ -846,66 +867,97 @@ def run_agent_stream(agent, task_text: str, pipeline_cfg: dict):
             unsafe_allow_html=True,
         )
 
+    def _process_messages(msgs, node_name=""):
+        nonlocal final_output
+        # Detect subagent scope from node_name — subgraphs=True prefixes node
+        # names with the subagent name, e.g. "data-analyst:agent"
+        scope = node_name.split(":")[0] if ":" in node_name else ""
+        scope_tag = f"[{scope}] " if scope and scope in sa_names else ""
+
+        for msg in msgs:
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tname = tc.get("name", "?")
+                    targs = tc.get("args", {})
+                    if tname == "task":
+                        sa_name = (targs.get("subagent_type") or
+                                   targs.get("agent_name") or
+                                   targs.get("name") or "?")
+                        _active_subagent.clear()
+                        _active_subagent.append(sa_name)
+                        idx  = next((i for i, s in enumerate(sa_names) if s == sa_name), 0)
+                        ckey = f"ls{idx % 4}"
+                        logs.append((ckey, f"🤖 task('{sa_name}') ← spawning sub-agent"))
+                    elif tname == "write_todos":
+                        tasks = targs.get("todos", targs.get("tasks", []))
+                        if isinstance(tasks, str):
+                            try:
+                                tasks = json.loads(tasks)
+                            except (json.JSONDecodeError, ValueError):
+                                tasks = []
+                            logs.append(("lw", "⚠️  write_todos: LLM sent todos as string — auto-fixed"))
+                        logs.append(("lm", f"📋 {scope_tag}write_todos → {len(tasks)} steps planned"))
+                    elif tname in ("write_file", "read_file", "edit_file"):
+                        fname = targs.get("file_path", targs.get("filename", targs.get("path", "?")))
+                        logs.append(("lm", f"💾 {scope_tag}{tname}('{fname}')"))
+                    else:
+                        arg_preview = str(targs)[:55].replace("\n", " ")
+                        logs.append(("lt", f"🔧 {scope_tag}{tname}({arg_preview})"))
+
+            elif isinstance(msg, ToolMessage):
+                # Subagent finished — clear active marker
+                if scope == "" and _active_subagent:
+                    sa = _active_subagent[0]
+                    _active_subagent.clear()
+                    logs.append(("lf", f"✅ task('{sa}') ← sub-agent done"))
+                content_preview = str(msg.content)[:120].replace("\n", " ")
+                logs.append(("lr", f"   ↳ {scope_tag}{content_preview}"))
+
+            elif isinstance(msg, AIMessage) and msg.content:
+                if not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                    content = str(msg.content).strip()
+                    if content:
+                        if not scope_tag:   # only main agent sets final output
+                            final_output = content
+                        preview = content[:80].replace("\n", " ")
+                        logs.append(("lm", f"💬 {scope_tag}agent: {preview}…"))
+
     final_output = ""
 
+    # ── subgraphs=True is the key fix: makes LangGraph emit stream chunks
+    #    from INSIDE subagents so the UI updates while a subagent is running.
+    #    Without it, the stream is completely silent during task() execution.
     for chunk in agent.stream(
         {"messages": [HumanMessage(content=task_text)]},
         stream_mode="updates",
+        subgraphs=True,          # ← THE FIX for frozen progress
     ):
-        for node_name, node_data in chunk.items():
-            if not isinstance(node_data, dict):
+        # With subgraphs=True, each chunk is (namespace_tuple, data_dict)
+        if isinstance(chunk, tuple):
+            ns, data = chunk
+            node_name = ns[-1] if ns else ""
+            if not isinstance(data, dict):
                 continue
-            msgs = node_data.get("messages", [])
-            for msg in msgs:
-                # Tool calls
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tname  = tc.get("name", "?")
-                        targs  = tc.get("args", {})
-                        if tname == "task":
-                            # Sub-agent delegation via deepagents built-in `task` tool
-                            sa_name = (targs.get("subagent_type") or
-                                       targs.get("agent_name") or
-                                       targs.get("name") or "?")
-                            idx  = next((i for i, s in enumerate(sa_names)
-                                         if s == sa_name), 0)
-                            ckey = f"ls{idx % 4}"
-                            logs.append((ckey, f"🤖 task('{sa_name}') ← spawning sub-agent"))
-                        elif tname == "write_todos":
-                            tasks = targs.get("todos", targs.get("tasks", []))
-                            if isinstance(tasks, str):
-                                # LLM sent todos as a JSON string — sanitiser should catch
-                                # this at runtime, but log a warning so it's visible
-                                try:
-                                    tasks = json.loads(tasks)
-                                except (json.JSONDecodeError, ValueError):
-                                    tasks = []
-                                logs.append(("lw", "⚠️  write_todos: LLM sent todos as string — auto-fixed"))
-                            logs.append(("lm", f"📋 write_todos → {len(tasks)} steps planned"))
-                        elif tname in ("write_file", "read_file", "edit_file"):
-                            fname = targs.get("filename", targs.get("path", "?"))
-                            logs.append(("lm", f"💾 {tname}('{fname}')"))
-                        else:
-                            arg_preview = str(targs)[:55].replace("\n", " ")
-                            logs.append(("lt", f"🔧 {tname}({arg_preview})"))
-
-                # Tool results
-                elif isinstance(msg, ToolMessage):
-                    content_preview = str(msg.content)[:100].replace("\n", " ")
-                    logs.append(("lr", f"   ↳ {content_preview}"))
-
-                # Agent text output
-                elif isinstance(msg, AIMessage) and msg.content:
-                    if not (hasattr(msg, "tool_calls") and msg.tool_calls):
-                        content = str(msg.content).strip()
-                        if content:
-                            final_output = content
-                            preview = content[:80].replace("\n", " ")
-                            logs.append(("lm", f"💬 agent: {preview}…"))
+            for _node, node_data in data.items():
+                if isinstance(node_data, dict):
+                    _process_messages(node_data.get("messages", []), node_name)
+                    # Heartbeat: show subagent thinking dots so UI isn't silent
+                    if _active_subagent and not node_data.get("messages"):
+                        _heartbeat_counter[0] += 1
+                        if _heartbeat_counter[0] % 3 == 0:
+                            dots = "." * ((_heartbeat_counter[0] // 3) % 4 + 1)
+                            logs.append(("lr", f"   ⏳ {_active_subagent[0]} thinking{dots}"))
+        else:
+            # Fallback: original flat format (no subgraphs)
+            for node_name, node_data in chunk.items():
+                if isinstance(node_data, dict):
+                    _process_messages(node_data.get("messages", []), node_name)
 
         _render()
 
     return final_output, res_ph
+
+
 
 
 # ─────────────────────────────────────────────────────────────────────────────
