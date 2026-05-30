@@ -759,13 +759,6 @@ def build_agent(api_key: str, model_str: str, instructions: str, subagents_cfg: 
 
     domain_tools = make_domain_tools(api_key, model_str)
 
-    # ── Patch: intercept write_todos before deepagents sees it so a
-    #    string-serialised todos arg (common LLM mistake) never crashes.
-    #    deepagents injects its OWN write_todos; we add a sanitiser wrapper
-    #    to the graph via a custom pre-processing node instead.
-    #    Simpler approach: monkey-patch the deepagents TodoListMiddleware's
-    #    write_todos tool after agent creation (see below).
-
     # Real deepagents subagent schema: name, description, system_prompt, model (optional)
     subagents = [
         {
@@ -780,8 +773,40 @@ def build_agent(api_key: str, model_str: str, instructions: str, subagents_cfg: 
     # Prepend tool-format rules to prevent malformed tool calls
     full_instructions = _TOOL_PREAMBLE + "\n" + instructions
 
-    # Real API (all keyword args):
-    # create_deep_agent(model=..., tools=[...], system_prompt="...", subagents=[...])
+    # ── Patch TodoListMiddleware BEFORE create_deep_agent builds the graph ──
+    # Root cause: LLaMA models pass `todos` as a JSON string instead of a list.
+    # The crash happens inside BaseTool._parse_input → WriteTodosInput.model_validate()
+    # which Pydantic validates BEFORE func() ever runs — so patching func is too late.
+    # Fix: patch _parse_input on every write_todos StructuredTool instance at the
+    # source: TodoListMiddleware.__init__ creates them, so we patch the class method
+    # that builds those tools so every instance gets sanitised automatically.
+    import types
+    from langchain.agents.middleware import TodoListMiddleware as _TLM
+    from langchain_core.tools.structured import StructuredTool as _ST
+
+    def _make_patched_parse_input(original_fn):
+        def _patched_parse_input(self, tool_input, tool_call_id):
+            if isinstance(tool_input, dict) and isinstance(tool_input.get("todos"), str):
+                try:
+                    tool_input = dict(tool_input)
+                    tool_input["todos"] = json.loads(tool_input["todos"])
+                except (json.JSONDecodeError, ValueError):
+                    tool_input["todos"] = []
+            return original_fn(self, tool_input, tool_call_id)
+        return _patched_parse_input
+
+    _original_tlm_init = _TLM.__init__
+
+    def _patched_tlm_init(self, *args, **kwargs):
+        _original_tlm_init(self, *args, **kwargs)
+        for t in self.tools:
+            if getattr(t, "name", None) == "write_todos":
+                t._parse_input = types.MethodType(
+                    _make_patched_parse_input(_ST._parse_input), t
+                )
+
+    _TLM.__init__ = _patched_tlm_init
+
     agent = create_deep_agent(
         model=main_model,
         tools=domain_tools,
@@ -789,39 +814,8 @@ def build_agent(api_key: str, model_str: str, instructions: str, subagents_cfg: 
         subagents=subagents,
     )
 
-    # ── Sanitise write_todos args at the LangGraph node level ──────────────
-    # deepagents injects write_todos as a built-in. The LLM sometimes passes
-    # todos as a JSON *string* instead of a list, causing:
-    #   "Error invoking tool 'write_todos' with kwargs {'todos': '[{...}]'}"
-    # We wrap the compiled graph's invoke/stream so that before any ToolMessage
-    # is processed, string-typed todos args are parsed back to lists.
-    # The cleanest interception point is patching the tool node directly.
-    try:
-        for node_name, node in agent.nodes.items():
-            if hasattr(node, "tools_by_name") and "write_todos" in node.tools_by_name:
-                original_wt = node.tools_by_name["write_todos"]
-                original_func = original_wt.func if hasattr(original_wt, "func") else None
-
-                if original_func is not None:
-                    import functools
-
-                    @functools.wraps(original_func)
-                    def _safe_write_todos(*args, _orig=original_func, **kwargs):
-                        todos = kwargs.get("todos", args[0] if args else [])
-                        if isinstance(todos, str):
-                            try:
-                                todos = json.loads(todos)
-                            except (json.JSONDecodeError, ValueError):
-                                todos = []
-                        if args:
-                            args = (todos,) + args[1:]
-                        else:
-                            kwargs["todos"] = todos
-                        return _orig(*args, **kwargs)
-
-                    original_wt.func = _safe_write_todos
-    except Exception:
-        pass  # patch is best-effort; original agent still works
+    # Restore original __init__ so we don't permanently alter the class
+    _TLM.__init__ = _original_tlm_init
 
     return agent
 
